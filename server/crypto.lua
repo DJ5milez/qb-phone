@@ -1,10 +1,12 @@
-local QBCore = exports['qb-core']:GetCoreObject()
-
+local createPhoneExport = require 'shared.export-function'
 
 -- exports['qb-phone']:RemoveCrypto(Player, type, amount)
+---@param src any
+---@param type string
+---@param amount? number
 local function RemoveCrypto(src, type, amount)
     if not src then return end
-    local Player = QBCore.Functions.GetPlayer(src)
+    local Player = exports.qbx_core:GetPlayer(src)
     if not Player or not type or not amount then return end
 
     local Crypto = Player.PlayerData.metadata.crypto
@@ -20,13 +22,16 @@ local function RemoveCrypto(src, type, amount)
     else
         return false
     end
-end exports("RemoveCrypto", RemoveCrypto)
+end createPhoneExport("RemoveCrypto", RemoveCrypto)
 
 
 -- exports['qb-phone']:hasEnough(Player, type, amount)
+---@param src any
+---@param type string
+---@param amount number
 local function hasEnough(src, type, amount)
     if not src then return end
-    local Player = QBCore.Functions.GetPlayer(src)
+    local Player = exports.qbx_core:GetPlayer(src)
 
     if not Player or not type or not amount then return end
 
@@ -38,13 +43,16 @@ local function hasEnough(src, type, amount)
     else
         return false
     end
-end exports("hasEnough", hasEnough)
+end createPhoneExport("hasEnough", hasEnough)
 
 
 -- exports['qb-phone']:AddCrypto(Player, type, amount)
+---@param src any
+---@param type string
+---@param amount number
 local function AddCrypto(src, type, amount)
     if not src then return end
-    local Player = QBCore.Functions.GetPlayer(src)
+    local Player = exports.qbx_core:GetPlayer(src)
 
     if not Player or not type or not amount then return false end
 
@@ -56,7 +64,7 @@ local function AddCrypto(src, type, amount)
     TriggerClientEvent('qb-phone:client:UpdateCrypto', src)
 
     return true
-end exports("AddCrypto", AddCrypto)
+end createPhoneExport("AddCrypto", AddCrypto)
 
 local function GetConfig(metadata)
     for k, v in pairs(Config.CryptoCoins) do
@@ -68,7 +76,7 @@ end
 
 RegisterNetEvent('qb-phone:server:PurchaseCrypto', function(type, amount)
     local src = source
-    local Player = QBCore.Functions.GetPlayer(src)
+    local Player = exports.qbx_core:GetPlayer(src)
     if not Player or not Player.PlayerData.metadata.crypto[type] then return end -- if the crypto dosnt exist
     local v = Config.CryptoCoins[GetConfig(type)]
     local cashAmount = tonumber(amount) * v.value
@@ -107,37 +115,37 @@ end)
 
 RegisterNetEvent('qb-phone:server:SellCrypto', function(type, amount)
     local src = source
-    local Player = QBCore.Functions.GetPlayer(src)
+    local Player = exports.qbx_core:GetPlayer(src)
     if not Player or not Player.PlayerData.metadata.crypto[type] then return end -- if the crypto dosnt exist
     local v = Config.CryptoCoins[GetConfig(type)]
     local cryptoAmount = tonumber(amount) * v.value
 
     if not v.sell then return end -- Only modders should be only to do this so no need to send a message to client
-    
+
     local txt = "Sold " .. amount .. "x " .. v.abbrev
-    
+
     if not RemoveCrypto(src, type, amount) then return end
 
-        Player.Functions.AddMoney('bank', cryptoAmount, txt)
-        TriggerClientEvent('qb-phone:client:CustomNotification', src,
-            "WALLET",
-            "You Sold "..amount.." "..type.."!",
-            "fas fa-chart-line",
-            "#D3B300",
-            7500
-        )
+    Player.Functions.AddMoney('bank', cryptoAmount, txt)
+    TriggerClientEvent('qb-phone:client:CustomNotification', src,
+        "WALLET",
+        "You Sold "..amount.." "..type.."!",
+        "fas fa-chart-line",
+        "#D3B300",
+        7500
+    )
 
-        if Config.RenewedBanking then
-            local cid = Player.PlayerData.citizenid
-            local name = ("%s %s"):format(Player.PlayerData.charinfo.firstname, Player.PlayerData.charinfo.lastname)
-            exports['Renewed-Banking']:handleTransaction(cid, "Sold Crypto", cryptoAmount, txt, "Los Santos Crypto", name, "deposit")
-        end
+    if Config.RenewedBanking then
+        local cid = Player.PlayerData.citizenid
+        local name = ("%s %s"):format(Player.PlayerData.charinfo.firstname, Player.PlayerData.charinfo.lastname)
+        exports['Renewed-Banking']:handleTransaction(cid, "Sold Crypto", cryptoAmount, txt, "Los Santos Crypto", name, "deposit")
+    end
 end)
 
 RegisterNetEvent('qb-phone:server:ExchangeCrypto', function(type, amount, stateid)
     local src = source
-    local Player = QBCore.Functions.GetPlayer(src)
-    local Receiver = QBCore.Functions.GetPlayer(tonumber(stateid))
+    local Player = exports.qbx_core:GetPlayer(src)
+    local Receiver = exports.qbx_core:GetPlayer(tonumber(stateid))
     if not Player or not Player.PlayerData.metadata.crypto[type] then return end -- if the crypto dosnt exist
     if not Receiver then return TriggerClientEvent("QBCore:Notify", src, 'This state id does not exists!', "error") end
 

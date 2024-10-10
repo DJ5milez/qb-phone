@@ -1,5 +1,3 @@
-local QBCore = exports['qb-core']:GetCoreObject()
-
 -- Events
 
 RegisterNetEvent('qb-phone:server:InvoiceHandler')
@@ -7,7 +5,7 @@ RegisterNetEvent('qb-phone:server:InvoiceHandler')
 -- EVENT HANDLER(S) --
 
 -- Has player paid something this --
---[[AddEventHandler('qb-phone:server:InvoiceHandler', function(paid, amount, source, resource)
+AddEventHandler('qb-phone:server:InvoiceHandler', function(paid, amount, source, resource)
 
     if paid and resource == GetCurrentResourceName() then
         if amount >= config.minPayment then
@@ -19,20 +17,17 @@ RegisterNetEvent('qb-phone:server:InvoiceHandler')
             -- Do shit
         end
     end
-end)]]
-
-
-
+end)
 
 RegisterNetEvent('qb-phone:server:PayMyInvoice', function(society, amount, invoiceId, sendercitizenid, resource)
     local src = source
-    local Player = QBCore.Functions.GetPlayer(src)
-    local SenderPly = QBCore.Functions.GetPlayerByCitizenId(sendercitizenid)
+    local Player = exports.qbx_core:GetPlayer(src)
+    local SenderPly = exports.qbx_core:GetPlayerByCitizenId(sendercitizenid)
     if Player.PlayerData.money.bank >= amount then
-        Player.Functions.RemoveMoney('bank', amount, "paid-invoice")
+        Player.Functions.RemoveMoney('bank', amount, "Paid Mobile Invoice")
         if SenderPly and Config.BillingCommissions and Config.BillingCommissions[society] then
             local commission = math.ceil(amount * Config.BillingCommissions[society])
-            SenderPly.Functions.AddMoney('bank', commission)
+            SenderPly.Functions.AddMoney('bank', commission, "Invoice Paid")
         end
 
         if SenderPly then
@@ -53,8 +48,8 @@ RegisterNetEvent('qb-phone:server:PayMyInvoice', function(society, amount, invoi
 end)
 
 RegisterNetEvent('qb-phone:server:DeclineMyInvoice', function(amount, invoiceId, sendercitizenid, resource)
-    local Ply = QBCore.Functions.GetPlayer(source)
-    local SenderPly = QBCore.Functions.GetPlayerByCitizenId(sendercitizenid)
+    local Ply = exports.qbx_core:GetPlayer(source)
+    local SenderPly = exports.qbx_core:GetPlayerByCitizenId(sendercitizenid)
     if not Ply then return end
 
     exports.oxmysql:execute('DELETE FROM phone_invoices WHERE id = ?', {invoiceId})
@@ -76,8 +71,8 @@ end)
 RegisterNetEvent('qb-phone:server:CreateInvoice', function(billed, biller, amount)
     local billedID = tonumber(billed)
     local cash = tonumber(amount)
-    local billedCID = QBCore.Functions.GetPlayer(billedID)
-    local billerInfo = QBCore.Functions.GetPlayer(biller)
+    local billedCID = exports.qbx_core:GetPlayer(billedID)
+    local billerInfo = exports.qbx_core:GetPlayer(biller)
 
     local resource = GetInvokingResource()
 
@@ -95,8 +90,8 @@ RegisterNetEvent('qb-phone:server:CreateInvoice', function(billed, biller, amoun
     end)
 end)
 
-QBCore.Functions.CreateCallback('qb-phone:server:GetInvoices', function(source, cb)
-    local Player = QBCore.Functions.GetPlayer(source)
+lib.callback.register('qb-phone:server:GetInvoices', function(source)
+    local Player = exports.qbx_core:GetPlayer(source)
     local invoices = exports.oxmysql:executeSync('SELECT * FROM phone_invoices WHERE citizenid = ?', {Player.PlayerData.citizenid})
-    cb(invoices)
+    return invoices
 end)

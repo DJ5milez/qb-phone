@@ -1,6 +1,3 @@
-local QBCore = exports['qb-core']:GetCoreObject()
-
-
 -- Use This Callback Whenever You Need To Get A the information --
 local cachedEmployees = {}
 local myJobs = {}
@@ -13,8 +10,8 @@ end)
 
 RegisterNUICallback('dutyStatus', function(_, cb)
     cb({
-        job = QBCore.Functions.GetPlayerData().job.name,
-        duty = QBCore.Functions.GetPlayerData().job.onduty
+        job = QBX.PlayerData.job.name,
+        duty = QBX.PlayerData.job.onduty
     })
 end)
 
@@ -31,13 +28,12 @@ RegisterNUICallback('SendEmployeePayment', function(data, cb)
     if not data.job or not data.cid or not data.amount then return end
 
     TriggerServerEvent('qb-phone:server:SendEmploymentPayment', data.job, data.cid, data.amount)
+
     cb("ok")
 end)
 
 RegisterNUICallback('RemoveEmployee', function(data, cb)
     if not data or not data.job or not data.cid then return end
-
-
 
     TriggerServerEvent('qb-phone:server:fireUser', data.job, data.cid)
 
@@ -55,6 +51,7 @@ RegisterNUICallback('ClockIn', function(data, cb)
     if not data or not data.job then return end
 
     TriggerServerEvent('qb-phone:server:clockOnDuty', data.job)
+
     cb("ok")
 end)
 
@@ -93,7 +90,7 @@ end)
 
 
 RegisterNetEvent('qb-phone:client:MyJobsHandler', function(job, jobTable, employees)
-    if not QBCore.Shared.Jobs[job] then return end
+    if not exports.qbx_core:GetJobs()[job] then return end
 
     myJobs[job] = jobTable
 
@@ -117,35 +114,10 @@ end)
 AddEventHandler('onResourceStart', function(resource)
     if resource == GetCurrentResourceName() then
         Wait(300)
-        QBCore.Functions.TriggerCallback('qb-phone:server:GetMyJobs', function(employees, myShit)
-            for k, _ in pairs(employees) do
-                for _, v in pairs(employees[k]) do
-                    if not cachedEmployees[k] then cachedEmployees[k] = {} end
-                    cachedEmployees[k][#cachedEmployees[k]+1] = {
-                        cid = v.cid,
-                        name = v.name,
-                        grade = tonumber(v.grade),
-                    }
-                end
-                table.sort(cachedEmployees[k], function(a, b)
-                    return a.grade > b.grade
-                end)
-            end
 
+        local employees, myShit = lib.callback.await('qb-phone:server:GetMyJobs', false)
+        if not employees then print('qb-phone first start might be enabled on the server, disable it!') return end
 
-            if myShit then
-                for k, v in pairs(myShit) do
-                    if QBCore.Shared.Jobs[k] and not myJobs[k] then myJobs[k] = v end
-                end
-            end
-        end)
-    end
-end)
-
-
-
-RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
-    QBCore.Functions.TriggerCallback('qb-phone:server:GetMyJobs', function(employees, myShit)
         for k, _ in pairs(employees) do
             for _, v in pairs(employees[k]) do
                 if not cachedEmployees[k] then cachedEmployees[k] = {} end
@@ -160,14 +132,55 @@ RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
             end)
         end
 
-
         if myShit then
             for k, v in pairs(myShit) do
-                if QBCore.Shared.Jobs[k] and not myJobs[k] then myJobs[k] = v end
+                if exports.qbx_core:GetJobs()[k] and not myJobs[k] then myJobs[k] = v end
             end
         end
-    end)
+    end
 end)
+
+RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
+    -- Ensure QBX.PlayerData is initialized
+    if not QBX.PlayerData or not QBX.PlayerData.job then
+        exports.qbx_core:Notify("Player data is missing or incomplete!", "error")
+        return
+    end
+
+    -- Fetch job-related data
+    local employees, myShit = lib.callback.await('qb-phone:server:GetMyJobs', false)
+
+    -- Check if 'employees' is nil or empty before iterating
+    if not employees or next(employees) == nil then
+        exports.qbx_core:Notify("No employees data found!", "error")
+        return
+    end
+
+    -- Process employees
+    for k, _ in pairs(employees) do
+        for _, v in pairs(employees[k]) do
+            if not cachedEmployees[k] then cachedEmployees[k] = {} end
+            cachedEmployees[k][#cachedEmployees[k] + 1] = {
+                cid = v.cid,
+                name = v.name,
+                grade = tonumber(v.grade),
+            }
+        end
+        table.sort(cachedEmployees[k], function(a, b)
+            return a.grade > b.grade
+        end)
+    end
+
+    -- Process the player's jobs if 'myShit' is not nil
+    if myShit then
+        for k, v in pairs(myShit) do
+            if exports.qbx_core:GetJobs()[k] and not myJobs[k] then 
+                myJobs[k] = v 
+            end
+        end
+    end
+end)
+
 
 RegisterNetEvent('QBCore:Client:OnPlayerUnload', function() -- Reset all variables
     myJobs = {}

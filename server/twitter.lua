@@ -1,4 +1,4 @@
-local QBCore = exports['qb-core']:GetCoreObject()
+local createPhoneExport = require 'shared.export-function'
 
 Tweets = {}
 
@@ -11,7 +11,8 @@ end)
 
 RegisterNetEvent('qb-phone:server:DeleteTweet', function(tweetId)
     local src = source
-    local CID = QBCore.Functions.GetPlayer(src).PlayerData.citizenid
+    local Player = exports.qbx_core:GetPlayer(src)
+    local CID = exports.qbx_core:GetPlayer(src).PlayerData.citizenid
     local delete = false
     for i = 1, #Tweets do
         if Tweets[i].tweetId == tweetId and Tweets[i].citizenid == CID then
@@ -26,14 +27,14 @@ end)
 
 RegisterNetEvent('qb-phone:server:UpdateTweets', function(TweetData)
     local src = source
-    local Player = QBCore.Functions.GetPlayer(src)
-    local HasVPN = Player.Functions.GetItemByName(Config.VPNItem)
+    local Player = exports.qbx_core:GetPlayer(src)
+    local HasVPN = exports.ox_inventory:Search(src, 'count', Config.VPNItem)
 
-    if (TweetData.showAnonymous and HasVPN) then
+    if (TweetData.showAnonymous and HasVPN > 0) then
         TweetData.firstName = "Anonymous"
         TweetData.lastName = ""
     end
-    
+
     print(json.encode(TweetData.url))
     MySQL.insert('INSERT INTO phone_tweets (citizenid, firstName, lastName, message, url, tweetid, type) VALUES (?, ?, ?, ?, ?, ?, ?)', {
         TweetData.citizenid,
@@ -91,4 +92,4 @@ local function AddNewTweet(TweetData)
             TriggerClientEvent('qb-phone:client:UpdateTweets', -1, 0, Tweets, false)
         end
     end)
-end exports("AddNewTweet", AddNewTweet)
+end createPhoneExport("AddNewTweet", AddNewTweet)

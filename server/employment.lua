@@ -2,6 +2,8 @@ local QBCore = exports['qb-core']:GetCoreObject()
 local CachedJobs = {}
 local CachedPlayers = {}
 
+local createPhoneExport = require 'shared.export-function'
+
 local function getJobs(cid)
     local jobs = {}
     local employees = {}
@@ -18,7 +20,7 @@ local function getJobs(cid)
     end
 
     return jobs, employees
-end exports('getJobs', getJobs)
+end createPhoneExport('getJobs', getJobs)
 
 local FirstStart = false
 
@@ -26,41 +28,53 @@ CreateThread(function()
     ---- Convertion Tool I guess LOL ----
     if not FirstStart then return end
     while not QBCore do Wait(25) end
-    for k, _ in pairs(QBCore.Shared.Jobs) do
+    for k, _ in pairs(exports.qbx_core:GetJobs()) do
         if k ~= 'unemployed' then
             if not CachedJobs[k] then CachedJobs[k] = {} end
 
+            local jobCheck = MySQL.query.await('SELECT * FROM player_jobs WHERE jobname = ?', { k })
             local players = MySQL.query.await("SELECT * FROM `players` WHERE `job` LIKE '%".. k .."%'", {})
+
             if players[1] then
                 for _, v in pairs(players) do
-                    if v.job then
-                        local grade = json.decode(v.job).grade.level or false
-                        local FirstName = json.decode(v.charinfo) and json.decode(v.charinfo).firstname or false
-                        local LastName = json.decode(v.charinfo) and json.decode(v.charinfo).lastname or false
+                    --if v.job == ignoredJobs then return end
+                    if not v.job then return end
 
-                        if grade and QBCore.Shared.Jobs[k].grades and QBCore.Shared.Jobs[k].grades[tostring(grade)] and v.citizenid and v.charinfo and FirstName and LastName then
-                            if not CachedJobs[k].employees then CachedJobs[k].employees = {} end
-                            if not CachedJobs[k].employees[v.citizenid] then
+                    local grade = json.decode(v.job).grade.level or false
+                    local FirstName = json.decode(v.charinfo) and json.decode(v.charinfo).firstname or false
+                    local LastName = json.decode(v.charinfo) and json.decode(v.charinfo).lastname or false
 
-                                CachedJobs[k].employees[v.citizenid] = {
-                                    cid = v.citizenid,
-                                    grade = json.decode(v.job).grade.level,
-                                    name = json.decode(v.charinfo).firstname .. ' ' .. json.decode(v.charinfo).lastname
-                                }
-                            end
+                    if grade and exports.qbx_core:GetJobs()[k].grades and exports.qbx_core:GetJobs()[k].grades[grade] and v.citizenid and v.charinfo and FirstName and LastName then
+                        if not CachedJobs[k].employees then CachedJobs[k].employees = {} end
+                        if not CachedJobs[k].employees[v.citizenid] then
+
+                            CachedJobs[k].employees[v.citizenid] = {
+                                cid = v.citizenid,
+                                grade = json.decode(v.job).grade.level,
+                                name = json.decode(v.charinfo).firstname .. ' ' .. json.decode(v.charinfo).lastname
+                            }
                         end
                     end
                 end
 
-                MySQL.insert('INSERT INTO player_jobs (`jobname`, `employees`) VALUES (?, ?)', {
-                    k,
-                    json.encode(CachedJobs[k].employees)
-                })
+                if not jobCheck[1] then -- Create job w/ employees if non-existent
+                    MySQL.insert('INSERT INTO player_jobs (`jobname`, `employees`) VALUES (?, ?)', {
+                        k,
+                        json.encode(CachedJobs[k].employees)
+                    })
+                else -- Update employees if job exist
+                    MySQL.update('UPDATE player_jobs SET employees = ? WHERE jobname = ?', {
+                        json.encode(CachedJobs[k].employees),
+                        k
+                    })
+                end
             else
-                MySQL.insert('INSERT INTO player_jobs (`jobname`, `employees`) VALUES (?, ?)', {
-                    k,
-                    json.encode({})
-                })
+                if not jobCheck[1] then -- Create job w/o employees if it does not exist
+                    MySQL.insert('INSERT INTO player_jobs (`jobname`, `employees`) VALUES (?, ?)', {
+                        k,
+                        json.encode({})
+                    })
+                end
             end
             Wait(10)
         end
@@ -94,8 +108,37 @@ local function notifyPlayer(src, message)
         "#FFFC00",
         10000
     )
-
 end
+
+local function JobsHandler(source, Job, CID, grade)
+    local src = source
+    local srcPlayer = exports.qbx_core:GetPlayer(src)
+
+    if not srcPlayer then return print("no source") end
+
+    local srcCID = srcPlayer.PlayerData.citizenid
+
+    if not Job or not CID or not CachedJobs[Job] then return end
+    local Player = exports.qbx_core:GetPlayerByCitizenId(CID)
+    if not CachedJobs[Job].employees[CID] then return notifyPlayer(src, "Citizen is not employed at the job...") end
+    if grade > CachedJobs[Job].employees[srcCID].grade then return notifyPlayer(src, "You cannot promote someone higher than you...") end
+
+    CachedJobs[Job].employees[CID].grade = grade
+
+    MySQL.update('UPDATE player_jobs SET employees = ? WHERE jobname = ?', { json.encode(CachedJobs[Job].employees), Job })
+
+    TriggerClientEvent("qb-phone:client:JobsHandler", -1, Job, CachedJobs[Job].employees)
+
+    if Player and CachedPlayers[CID] then
+        CachedPlayers[CID][Job] = CachedJobs[Job].employees[CID]
+
+        local newGrade = type(CachedJobs[Job].employees[CID].grade) ~= "number" and tonumber(CachedJobs[Job].employees[CID].grade) or CachedJobs[Job].employees[CID].grade
+        Player.Functions.SetJob(Job, newGrade)
+
+        TriggerClientEvent('qb-phone:client:MyJobsHandler', Player.PlayerData.source, Job, CachedPlayers[CID][Job], CachedJobs[Job].employees)
+    end
+end
+createPhoneExport('JobsHandler', JobsHandler)
 
 -- ** Fire someone in the business the player firing someone MUST be boss ** --
 RegisterNetEvent('qb-phone:server:fireUser', function(Job, sCID)
@@ -114,8 +157,8 @@ RegisterNetEvent('qb-phone:server:fireUser', function(Job, sCID)
 
     if not CachedJobs[Job].employees[srcCID].grade then return end
 
-    local grade = tostring(CachedJobs[Job].employees[srcCID].grade)
-    if not QBCore.Shared.Jobs[Job].grades[grade].isboss then return end
+    local grade = CachedJobs[Job].employees[srcCID].grade
+    if not exports.qbx_core:GetJobs()[Job].grades[grade].isboss then return end
 
     if CachedJobs[Job].employees[srcCID].grade < CachedJobs[Job].employees[CID].grade then return end
 
@@ -157,8 +200,8 @@ RegisterNetEvent('qb-phone:server:SendEmploymentPayment', function(Job, CID, amo
 
     if not CachedJobs[Job].employees[srcCID].grade then return end
 
-    local grade = tostring(CachedJobs[Job].employees[srcCID].grade)
-    if not QBCore.Shared.Jobs[Job].grades[grade].isboss then return notifyPlayer(src, "You aren't a manager...") end
+    local grade = CachedJobs[Job].employees[srcCID].grade
+    if not exports.qbx_core:GetJobs()[Job].grades[grade].isboss then return notifyPlayer(src, "You aren't a manager...") end
 
     local Reciever = QBCore.Functions.GetPlayerByCitizenId(CID)
     if not Reciever then return notifyPlayer(src, "Employee not found...") end
@@ -166,7 +209,7 @@ RegisterNetEvent('qb-phone:server:SendEmploymentPayment', function(Job, CID, amo
     local amt = tonumber(amount)
     if Config.RenewedBanking then
         if not exports['Renewed-Banking']:removeAccountMoney(Job, amt) then return notifyPlayer(src, "Insufficient Funds...") end
-        local title = QBCore.Shared.Jobs[Job].label.." // Employee Payment"
+        local title = exports.qbx_core:GetJobs()[Job].label.." // Employee Payment"
 
         ---- Business Account ----
         local BusinessName = ("%s %s"):format(Player.PlayerData.charinfo.firstname, Player.PlayerData.charinfo.lastname)
@@ -174,11 +217,11 @@ RegisterNetEvent('qb-phone:server:SendEmploymentPayment', function(Job, CID, amo
         local trans = exports['Renewed-Banking']:handleTransaction(Job, title, amt, "Payment given of $"..amt.." given to "..RecieverName, BusinessName, RecieverName, "withdraw")
 
         ---- Player Account ----
-        exports['Renewed-Banking']:handleTransaction(Reciever.PlayerData.citizenid, title, amt, "Payment recieved of $"..amt.." recieved from Business "..QBCore.Shared.Jobs[Job].label.. " and Manager "..BusinessName, BusinessName, RecieverName, "deposit", trans.trans_id)
+        exports['Renewed-Banking']:handleTransaction(Reciever.PlayerData.citizenid, title, amt, "Payment recieved of $"..amt.." recieved from Business "..exports.qbx_core:GetJobs()[Job].label.. " and Manager "..BusinessName, BusinessName, RecieverName, "deposit", trans.trans_id)
     else
         if not exports['qb-management']:RemoveMoney(Job, amt) then return notifyPlayer(src, "Insufficient Funds...") end
     end
-    Player.Functions.AddMoney('bank', amt)
+    Player.Functions.AddMoney('bank', amt, 'Employment Payment')
 end)
 
 ---- ** Player can hire someone aslong as they are boss within the group
@@ -196,8 +239,8 @@ RegisterNetEvent('qb-phone:server:hireUser', function(Job, id, grade)
 
     if not CachedJobs[Job].employees[pCID] or not CachedJobs[Job].employees[pCID].grade then return end
 
-    local bossGrade = tostring(CachedJobs[Job].employees[pCID].grade)
-    if not QBCore.Shared.Jobs[Job].grades[bossGrade].isboss then return notifyPlayer(src, "You arent a manager // boss...") end
+    local bossGrade = CachedJobs[Job].employees[pCID].grade
+    if not exports.qbx_core:GetJobs()[Job].grades[bossGrade].isboss then return notifyPlayer(src, "You arent a manager // boss...") end
 
     CachedJobs[Job].employees[CID] = {
         cid = CID,
@@ -233,8 +276,8 @@ RegisterNetEvent('qb-phone:server:gradesHandler', function(Job, CID, grade)
 
     if tonumber(grade) > tonumber(CachedJobs[Job].employees[srcCID].grade) then return notifyPlayer(src, "You cannot promote someone higher than you...") end
 
-    local bossGrade = tostring(CachedJobs[Job].employees[srcCID].grade)
-    if not QBCore.Shared.Jobs[Job].grades[bossGrade].isboss then return notifyPlayer(src, "You arent a manager // boss...") end
+    local bossGrade = CachedJobs[Job].employees[srcCID].grade
+    if not exports.qbx_core:GetJobs()[Job].grades[bossGrade].isboss then return notifyPlayer(src, "You arent a manager // boss...") end
 
     CachedJobs[Job].employees[CID].grade = tonumber(grade)
 
@@ -267,36 +310,39 @@ RegisterNetEvent('qb-phone:server:clockOnDuty', function(Job)
         Wait(50)
         if Player.PlayerData.job.onduty then
             notifyPlayer(src, "You have signed off duty")
-            Player.Functions.SetJobDuty(false)
+            Player.Functions.SetJobDuty(true)
         else
             notifyPlayer(src, "You have signed on duty")
-            Player.Functions.SetJobDuty(true)
+            Player.Functions.SetJobDuty(false)
         end
         TriggerClientEvent('qb-phone:client:clearAppAlerts', src)
     end
 end)
 
 ---- Gets the client side cache for players ----
-QBCore.Functions.CreateCallback("qb-phone:server:GetMyJobs", function(source, cb)
-    if FirstStart then return end
-    local Player = QBCore.Functions.GetPlayer(source)
+lib.callback.register("qb-phone:server:GetMyJobs", function(source)
+    if FirstStart then return nil, nil end  -- Return explicit nil if FirstStart is true
+    local Player = exports.qbx_core:GetPlayer(source)
 
-    if not Player then return cb(nil, nil) end
+    if not Player then return nil, nil end  -- Return explicit nil if Player is not found
 
     local job = Player.PlayerData.job.name
-
     local CID = Player.PlayerData.citizenid
     local employees
     CachedPlayers[CID], employees = getJobs(CID)
 
-    ---- If you were fired while being offline it will remove the job --
+    -- Initialize employees as an empty table if getJobs returns nil
+    if not employees then employees = {} end
+    if not CachedPlayers[CID] then CachedPlayers[CID] = {} end
+
+    -- If you were fired while being offline it will remove the job
     if not CachedPlayers[CID][job] then
         Player.Functions.SetJob("unemployed", 0)
     end
 
-
-    cb(employees, CachedPlayers[CID])
+    return employees, CachedPlayers[CID]
 end)
+
 
 ---- Functions and Exports people can use across script to hire and fire people to sync ----
 
@@ -323,7 +369,7 @@ local function hireUser(Job, CID, grade)
     end
 
     TriggerClientEvent("qb-phone:client:JobsHandler", -1, Job, CachedJobs[Job].employees)
-end exports("hireUser", hireUser)
+end createPhoneExport("hireUser", hireUser)
 
 ---- Use this to fire anyone through scripts DO NOT use this through exploitable events since its meant to not be the securest ----
 local function fireUser(Job, CID)
@@ -349,7 +395,7 @@ local function fireUser(Job, CID)
     if Player.PlayerData.source then
         TriggerClientEvent('qb-phone:client:MyJobsHandler', Player.PlayerData.source, Job, nil, nil)
     end
-end exports("fireUser", fireUser)
+end createPhoneExport("fireUser", fireUser)
 
 local bills = {}
 
@@ -405,7 +451,6 @@ AddEventHandler('qb-phone:server:InvoiceHandler', function(paid, amount, source,
                         if #(coords - bills[source].coords) < 10.0 then
                             local tempPlayer = QBCore.Functions.GetPlayer(DutySrcs[i])
                             tempPlayer.Functions.AddItem('payticket', 1)
-                            TriggerClientEvent('inventory:client:ItemBox', DutySrcs[i], QBCore.Shared.Items['payticket'], "add", 1)
                             TriggerClientEvent('QBCore:Notify', DutySrcs[i], 'Receipt received', 'success')
                         end
                     end

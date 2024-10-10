@@ -1,5 +1,3 @@
-local QBCore = exports['qb-core']:GetCoreObject()
-
 -- Functions
 
 local function escape_str(s)
@@ -14,7 +12,7 @@ end
 -- NUI Callback
 
 RegisterNUICallback('GetTweets', function(_, cb)
-    local hasVPN = QBCore.Functions.HasItem(Config.VPNItem)
+    local hasVPN = QBCore.Functions.HasItem(Config.VPNItem, 1)
 
     cb({
         TweetData = PhoneData.Tweets,
@@ -53,7 +51,7 @@ RegisterNUICallback('DeleteTweet',function(data)
 end)
 
 RegisterNUICallback('FlagTweet',function(data, cb)
-    QBCore.Functions.Notify(data.name..' was reported for saying '..data.message, "error")
+    exports.qbx_core:Notify(data.name..' was reported for saying '..data.message, "error")
     cb('ok')
 end)
 
@@ -62,7 +60,7 @@ end)
 RegisterNetEvent('qb-phone:client:UpdateTweets', function(src, Tweets, delete)
     if not PhoneData or not FullyLoaded then return end
     PhoneData.Tweets = Tweets
-    local MyPlayerId = PlayerData.source or -1
+    local MyPlayerId = PhoneData.PlayerData.source or -1
 
 
     if delete and src == MyPlayerId then
@@ -78,7 +76,7 @@ RegisterNetEvent('qb-phone:client:UpdateTweets', function(src, Tweets, delete)
         })
     end
 
-    local hasVPN = QBCore.Functions.HasItem(Config.VPNItem)
+    local hasVPN = QBCore.Functions.HasItem(Config.VPNItem, 1)
 
     SendNUIMessage({
         action = "UpdateTweets",

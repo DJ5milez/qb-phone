@@ -1,4 +1,3 @@
-local QBCore = exports['qb-core']:GetCoreObject()
 local Hashtags = {} -- Located in the Twitter File as well ??
 local Calls = {}
 local WebHook = Config.Webhook
@@ -22,32 +21,31 @@ end
 
 -- Callbacks
 
-QBCore.Functions.CreateCallback('qb-phone:server:GetCallState', function(source, cb, ContactData)
+lib.callback.register('qb-phone:server:GetCallState', function(source, ContactData)
     local number = tostring(ContactData.number)
-    local Target = QBCore.Functions.GetPlayerByPhone(number)
-    local Player = QBCore.Functions.GetPlayer(source)
+    local Target = exports.qbx_core:GetPlayerByPhone(number)
+    local Player = exports.qbx_core:GetPlayer(source)
 
-    if not Target then return cb(false, false) end
+    if not Target then return false, false end
 
-    if Target.PlayerData.citizenid == Player.PlayerData.citizenid then return cb(false, false) end
+    if Target.PlayerData.citizenid == Player.PlayerData.citizenid then return false, false end
 
     if Calls[Target.PlayerData.citizenid] then
         if Calls[Target.PlayerData.citizenid].inCall then
-            cb(false, true)
+            return false, true
         else
-            cb(true, true)
+            return true, true
         end
     else
-        cb(true, true)
+        return true, true
     end
 end)
 
-QBCore.Functions.CreateCallback('qb-phone:server:GetPhoneData', function(source, cb)
+lib.callback.register('qb-phone:server:GetPhoneData', function(source)
     local src = source
-    local Player = QBCore.Functions.GetPlayer(src)
+    local Player = exports.qbx_core:GetPlayer(src)
     if not Player or not src then return end
     local CID = Player.PlayerData.citizenid
-
 
     local PhoneData = {
         PlayerContacts = {},
@@ -102,12 +100,11 @@ QBCore.Functions.CreateCallback('qb-phone:server:GetPhoneData', function(source,
         PhoneData.ChatRooms = chat_rooms
         ChatRooms = chat_rooms
     end
-    cb(PhoneData)
+    return PhoneData
 end)
 
-
 -- Can't even wrap my head around this lol diffently needs a good old rewrite
-QBCore.Functions.CreateCallback('qb-phone:server:FetchResult', function(_, cb, input)
+lib.callback.register('qb-phone:server:FetchResult', function(_, input)
     local search = escape_sqli(input)
     local searchData = {}
     local ApaData = {}
@@ -147,21 +144,21 @@ QBCore.Functions.CreateCallback('qb-phone:server:FetchResult', function(_, cb, i
                 appartmentdata = appiepappie
             }
         end
-        cb(searchData)
+        return searchData
     else
-        cb(nil)
+        return nil
     end
 end)
 
 -- Webhook needs to get fixed, right now anyone can grab this and use it to spam dick pics in Discord servers
-QBCore.Functions.CreateCallback("qb-phone:server:GetWebhook",function(_, cb)
-	cb(WebHook)
+lib.callback.register("qb-phone:server:GetWebhook",function(_)
+	return WebHook
 end)
 
 -- Events
 RegisterNetEvent('qb-phone:server:SetCallState', function(bool)
     local src = source
-    local Ply = QBCore.Functions.GetPlayer(src)
+    local Ply = exports.qbx_core:GetPlayer(src)
 
     if not Ply then return end
 
@@ -171,8 +168,8 @@ end)
 
 RegisterNetEvent('qb-phone:server:CallContact', function(TargetData, CallId, AnonymousCall)
     local src = source
-    local Ply = QBCore.Functions.GetPlayer(src)
-    local Target = QBCore.Functions.GetPlayerByPhone(tostring(TargetData.number))
+    local Ply = exports.qbx_core:GetPlayer(src)
+    local Target = exports.qbx_core:GetPlayerByPhone(tostring(TargetData.number))
     if not Target or not Ply then return end
 
     TriggerClientEvent('qb-phone:client:GetCalled', Target.PlayerData.source, Ply.PlayerData.charinfo.phone, CallId, AnonymousCall)
@@ -180,28 +177,35 @@ end)
 
 RegisterNetEvent('qb-phone:server:EditContact', function(newName, newNumber, oldName, oldNumber)
     local src = source
-    local Player = QBCore.Functions.GetPlayer(src)
+    local Player = exports.qbx_core:GetPlayer(src)
 
     if not Player then return end
 
-    exports.oxmysql:execute(
-        'UPDATE player_contacts SET name = ?, number = ? WHERE citizenid = ? AND name = ? AND number = ?',
-        {newName, newNumber, Player.PlayerData.citizenid, oldName, oldNumber})
+    exports.oxmysql:execute('UPDATE player_contacts SET name = ?, number = ? WHERE citizenid = ? AND name = ? AND number = ?', {
+        newName,
+        newNumber,
+        Player.PlayerData.citizenid,
+        oldName,
+        oldNumber
+    })
 end)
 
 RegisterNetEvent('qb-phone:server:RemoveContact', function(Name, Number)
     local src = source
-    local Player = QBCore.Functions.GetPlayer(src)
+    local Player = exports.qbx_core:GetPlayer(src)
 
     if not Player then return end
 
-    exports.oxmysql:execute('DELETE FROM player_contacts WHERE name = ? AND number = ? AND citizenid = ?',
-        {Name, Number, Player.PlayerData.citizenid})
+    exports.oxmysql:execute('DELETE FROM player_contacts WHERE name = ? AND number = ? AND citizenid = ?', {
+        Name,
+        Number,
+        Player.PlayerData.citizenid
+    })
 end)
 
 RegisterNetEvent('qb-phone:server:AddNewContact', function(name, number)
     local src = source
-    local Player = QBCore.Functions.GetPlayer(src)
+    local Player = exports.qbx_core:GetPlayer(src)
 
     if not Player then return end
 
@@ -210,14 +214,14 @@ end)
 
 RegisterNetEvent('qb-phone:server:AddRecentCall', function(type, data)
     local src = source
-    local Ply = QBCore.Functions.GetPlayer(src)
+    local Ply = exports.qbx_core:GetPlayer(src)
     local Hour = os.date("%H")
     local Minute = os.date("%M")
     local label = Hour .. ":" .. Minute
 
     TriggerClientEvent('qb-phone:client:AddRecentCall', src, data, label, type)
 
-    local Target = QBCore.Functions.GetPlayerByPhone(data.number)
+    local Target = exports.qbx_core:GetPlayerByPhone(data.number)
     if not Target then return end
 
     TriggerClientEvent('qb-phone:client:AddRecentCall', Target.PlayerData.source, {
@@ -232,7 +236,7 @@ RegisterNetEvent('qb-phone:server:GiveContactDetails', function(PlayerId)
     local src = source
     if not src then return end
 
-    local Sender = QBCore.Functions.GetPlayer(src)
+    local Sender = exports.qbx_core:GetPlayer(src)
 
     local contactInfo = {
         name = Sender.PlayerData.charinfo.firstname.." "..Sender.PlayerData.charinfo.lastname,
@@ -247,7 +251,7 @@ RegisterNetEvent('qb-phone:server:acceptContactRequest', function(contactInfo)
     if not contactInfo then return end
     local src = source
     if not src then return end
-    local Player = QBCore.Functions.GetPlayer(src)
+    local Player = exports.qbx_core:GetPlayer(src)
     local cid = Player.PlayerData.citizenid
 
     local result = MySQL.query.await("SELECT * FROM player_contacts WHERE citizenid = ? AND number = ?", {cid, contactInfo.number})
@@ -258,13 +262,13 @@ RegisterNetEvent('qb-phone:server:acceptContactRequest', function(contactInfo)
 end)
 
 RegisterNetEvent('qb-phone:server:CancelCall', function(ContactData)
-    local Ply = QBCore.Functions.GetPlayerByPhone(tostring(ContactData.TargetData.number))
+    local Ply = exports.qbx_core:GetPlayerByPhone(tostring(ContactData.TargetData.number))
     if not Ply then return end
     TriggerClientEvent('qb-phone:client:CancelCall', Ply.PlayerData.source)
 end)
 
 RegisterNetEvent('qb-phone:server:AnswerCall', function(CallData)
-    local Ply = QBCore.Functions.GetPlayerByPhone(CallData.TargetData.number)
+    local Ply = exports.qbx_core:GetPlayerByPhone(CallData.TargetData.number)
     if not Ply then return end
 
     TriggerClientEvent('qb-phone:client:AnswerCall', Ply.PlayerData.source)
@@ -272,7 +276,7 @@ end)
 
 RegisterNetEvent('qb-phone:server:SaveMetaData', function(MData)
     local src = source
-    local Player = QBCore.Functions.GetPlayer(src)
+    local Player = exports.qbx_core:GetPlayer(src)
     if not Player then return end
 
     Player.Functions.SetMetaData("phone", MData)

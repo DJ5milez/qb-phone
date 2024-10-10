@@ -1,9 +1,7 @@
-local QBCore = exports['qb-core']:GetCoreObject()
-
 RegisterNetEvent('qb-phone:server:wenmo_givemoney_toID', function(data)
     local src = source
-    local Ply = QBCore.Functions.GetPlayer(src)
-    local OtherPly = QBCore.Functions.GetPlayer(tonumber(data.ID))
+    local Ply = exports.qbx_core:GetPlayer(src)
+    local OtherPly = exports.qbx_core:GetPlayer(tonumber(data.ID))
     local Amount = tonumber(data.Amount)
     local Reason = data.Reason
 
@@ -12,7 +10,7 @@ RegisterNetEvent('qb-phone:server:wenmo_givemoney_toID', function(data)
     if not OtherPly then return TriggerClientEvent('QBCore:Notify', src, 'Player not Online', "error") end
 
     local txt = "Wenmo: "..Reason
-    
+
     if Ply.PlayerData.money.bank >= Amount then
         Ply.Functions.RemoveMoney('bank', Amount, txt)
         OtherPly.Functions.AddMoney('bank', Amount, txt)

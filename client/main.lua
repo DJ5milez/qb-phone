@@ -1,7 +1,5 @@
-local QBCore = exports['qb-core']:GetCoreObject()
-
 --- Global Variables ---
-PlayerData = QBCore.Functions.GetPlayerData()
+local createPhoneExport = require 'shared.export-function'
 
 local frontCam = false
 
@@ -23,6 +21,7 @@ PhoneData = {
     Adverts = {},
     Documents = {},
     GarageVehicles = {},
+    PlayerJob = nil,
     AnimationData = {
         lib = nil,
         anim = nil,
@@ -31,15 +30,13 @@ PhoneData = {
     ChatRooms = {},
 }
 
-
-
-
 -- Localized Variables --
 local CallVolume = 0.2
 
-
 -- Functions
 
+---@param num number
+---@return string
 local function IsNumberInContacts(num)
     for _, v in pairs(PhoneData.Contacts) do
         if num == v.number then
@@ -51,23 +48,27 @@ local function IsNumberInContacts(num)
 end
 
 local function hasPhone()
-    if PlayerData.items then
-        for _, v in pairs(PlayerData.items) do
+    if QBX.PlayerData.items then
+        for _, v in pairs(QBX.PlayerData.items) do
             if v.name == 'phone' then
                 return true
             end
         end
     end
-end exports('hasPhone', hasPhone)
+end createPhoneExport('hasPhone', hasPhone)
+
+local function IsPhoneOpen()
+    return PhoneData.isOpen
+end createPhoneExport("IsPhoneOpen", IsPhoneOpen)
 
 local function CalculateTimeToDisplay()
-	local hour = GetClockHours()
+    local hour = GetClockHours()
     local minute = GetClockMinutes()
 
     local obj = {}
 
-	if minute <= 9 then
-		minute = "0" .. minute
+    if minute <= 9 then
+        minute = "0" .. minute
     end
 
     obj.hour = hour
@@ -90,116 +91,121 @@ local PublicPhoneobject = {
     -2103798695,1158960338,
     1281992692,1511539537,
     295857659,-78626473,
-    -1559354806
+    -1559354806, 'np_mdm_phonebooth'
 }
 
-exports["qb-target"]:AddTargetModel(PublicPhoneobject, {
-    options = {
-        {
-            type = "client",
-            event = "qb-phone:client:publocphoneopen",
-            icon = "fas fa-phone-alt",
-            label = "Public Phone",
-        },
+exports.ox_target:addModel(PublicPhoneobject, {
+    {
+        icon = "fas fa-phone-volume",
+        label = "Make Call",
+        onSelect = function()
+            TriggerEvent("qb-phone:client:publicphoneopen")
+        end,
+        distance = 1.0
     },
-    distance = 1.0
+    {
+        icon = 'fas fa-clipboard',
+        label = 'View Taxis',
+        onSelect = function()
+            TriggerEvent('qb-phone:OpenAvailableTaxi')
+        end,
+        distance = 1.0
+    }
 })
 
 
 local function LoadPhone()
-    QBCore.Functions.TriggerCallback('qb-phone:server:GetPhoneData', function(pData)
-
-        -- Should fix errors with phone not loading correctly --
-        while pData == nil do Wait(25) end
-
-        PhoneData.PlayerData = PlayerData
-        local PhoneMeta = PhoneData.PlayerData.metadata["phone"]
-        PhoneData.MetaData = PhoneMeta
-
-        PhoneData.MetaData.profilepicture = PhoneMeta.profilepicture or "default"
-
-        if pData.PlayerContacts and next(pData.PlayerContacts) then
-            PhoneData.Contacts = pData.PlayerContacts
-        end
-
-        if pData.Chats and next(pData.Chats) then
-            local Chats = {}
-            for _, v in pairs(pData.Chats) do
-                Chats[v.number] = {
-                    name = IsNumberInContacts(v.number),
-                    number = v.number,
-                    messages = json.decode(v.messages)
-                }
-            end
-
-            PhoneData.Chats = Chats
-        end
-
-        if pData.Hashtags and next(pData.Hashtags) then
-            PhoneData.Hashtags = pData.Hashtags
-        end
-
-        if pData.Invoices and next(pData.Invoices) then
-            for _, v in pairs(pData.Invoices) do
-                PhoneData.Invoices[#PhoneData.Invoices+1] = {
-                    id = v.id,
-                    citizenid = QBCore.Functions.GetPlayerData().citizenid,
-                    sender = v.name,
-                    society = v.job,
-                    sendercitizenid = v.senderCID,
-                    amount = v.amount
-                }
-            end
-        end
-
-        if pData.Tweets and next(pData.Tweets) then
-            PhoneData.Tweets = pData.Tweets
-        end
-
-        if pData.Documents and next(pData.Documents) then
-            PhoneData.Documents = pData.Documents
-        end
-
-        if pData.Mails and next(pData.Mails) then
-            for _, v in pairs(pData.Mails) do
-                PhoneData.Mails[#PhoneData.Mails+1] = {
-                    citizenid = v.citizenid,
-                    sender = v.sender,
-                    subject = v.subject,
-                    message = v.message,
-                    read = v.read,
-                    mailid = v.mailId,
-                    date = v.date,
-                    button = type(v.button) == "string" and json.decode(v.button) or v.button
-                }
-            end
-        end
-
-        if pData.Adverts and next(pData.Adverts) then
-            PhoneData.Adverts = pData.Adverts
-        end
-
-
-        if pData.Images and next(pData.Images) then
-            PhoneData.Images = pData.Images
-        end
-
-        if pData.ChatRooms ~= nil and next(pData.ChatRooms) ~= nil then
-            PhoneData.ChatRooms = pData.ChatRooms
-        end
-
-        SendNUIMessage({
-            action = "LoadPhoneData",
-            PhoneData = PhoneData,
-            PlayerData = PlayerData,
-            PlayerJob = PlayerData,
-            PhoneJobs = QBCore.Shared.Jobs,
-            applications = Config.PhoneApplications,
-            PlayerId = GetPlayerServerId(PlayerId())
-        })
-
+    -- Should fix errors with phone not loading correctly --
+    local pData = lib.waitFor(function()
+        return lib.callback.await('qb-phone:server:GetPhoneData', false)
     end)
+
+    PhoneData.PlayerData = QBX.PlayerData
+    local PhoneMeta = PhoneData.PlayerData.metadata.phone
+    PhoneData.MetaData = PhoneMeta
+
+    PhoneData.MetaData.profilepicture = PhoneMeta.profilepicture or "default"
+
+    if pData.PlayerContacts and next(pData.PlayerContacts) then
+        PhoneData.Contacts = pData.PlayerContacts
+    end
+
+    if pData.Chats and next(pData.Chats) then
+        local Chats = {}
+        for _, v in pairs(pData.Chats) do
+            Chats[v.number] = {
+                name = IsNumberInContacts(v.number),
+                number = v.number,
+                messages = json.decode(v.messages)
+            }
+        end
+
+        PhoneData.Chats = Chats
+    end
+
+    if pData.Hashtags and next(pData.Hashtags) then
+        PhoneData.Hashtags = pData.Hashtags
+    end
+
+    if pData.Invoices and next(pData.Invoices) then
+        for _, v in pairs(pData.Invoices) do
+            PhoneData.Invoices[#PhoneData.Invoices+1] = {
+                id = v.id,
+                citizenid = QBX.PlayerData.citizenid,
+                sender = v.name,
+                society = v.job,
+                sendercitizenid = v.senderCID,
+                amount = v.amount
+            }
+        end
+    end
+
+    if pData.Tweets and next(pData.Tweets) then
+        PhoneData.Tweets = pData.Tweets
+    end
+
+    if pData.Documents and next(pData.Documents) then
+        PhoneData.Documents = pData.Documents
+    end
+
+    if pData.Mails and next(pData.Mails) then
+        for _, v in pairs(pData.Mails) do
+            PhoneData.Mails[#PhoneData.Mails+1] = {
+                citizenid = v.citizenid,
+                sender = v.sender,
+                subject = v.subject,
+                message = v.message,
+                read = v.read,
+                mailid = v.mailId,
+                date = v.date,
+                button = type(v.button) == "string" and json.decode(v.button) or v.button
+            }
+        end
+    end
+
+    if pData.Adverts and next(pData.Adverts) then
+        PhoneData.Adverts = pData.Adverts
+    end
+
+    if pData.Images and next(pData.Images) then
+        PhoneData.Images = pData.Images
+    end
+
+    if pData.ChatRooms ~= nil and next(pData.ChatRooms) ~= nil then
+        PhoneData.ChatRooms = pData.ChatRooms
+    end
+
+    SendNUIMessage({
+        action = "LoadPhoneData",
+        PhoneData = PhoneData,
+        PlayerData = QBX.PlayerData,
+        PlayerJob = QBX.PlayerData.job,
+        PhoneJobs = QBCore.Shared.Jobs,
+        applications = Config.PhoneApplications,
+        PlayerId = GetPlayerServerId(cache.playerId)
+    })
 end
+
 local function DisableDisplayControlActions()
     DisableControlAction(0, 1, true) -- disable mouse look
     DisableControlAction(0, 2, true) -- disable mouse look
@@ -223,9 +229,14 @@ end
 
 local function OpenPhone()
     if hasPhone() then
-        PhoneData.PlayerData = PlayerData
+        PhoneData.PlayerData = QBX.PlayerData
+        if not PhoneData.PlayerData or not PhoneData.PlayerData.job then
+            exports.qbx_core:Notify("Player data is missing!", "error")
+            return
+        end
+
         SetNuiFocus(true, true)
-        
+
         local hasVPN = QBCore.Functions.HasItem(Config.VPNItem)
 
         SendNUIMessage({
@@ -234,6 +245,7 @@ local function OpenPhone()
             AppData = Config.PhoneApplications,
             CallData = PhoneData.CallData,
             PlayerData = PhoneData.PlayerData,
+            PlayerJob = PhoneData.PlayerData.job.name,  -- Safe access here
             hasVPN = hasVPN,
         })
         PhoneData.isOpen = true
@@ -247,21 +259,23 @@ local function OpenPhone()
         end)
     end
         if not PhoneData.CallData.InCall then
-            DoPhoneAnimation('cellphone_text_in')
+            exports['qb-phone']:DoPhoneAnimation('cellphone_text_in')
         else
-            DoPhoneAnimation('cellphone_call_to_text')
+            exports['qb-phone']:DoPhoneAnimation('cellphone_call_to_text')
         end
 
         SetTimeout(250, function()
-            newPhoneProp()
+            exports['qb-phone']:newPhoneProp()
         end)
 
         updateTime()
     else
-        QBCore.Functions.Notify("You don't have a phone?", "error")
+        exports.qbx_core:Notify("You don't have a phone?", "error")
     end
 end
 
+---@param caller number
+---@param target number
 local function GenerateCallId(caller, target)
     local CallId = math.ceil(((tonumber(caller) + tonumber(target)) / 100 * 1))
     return CallId
@@ -279,8 +293,8 @@ local function CancelCall()
     PhoneData.CallData.CallId = nil
 
     if not PhoneData.isOpen then
-        StopAnimTask(PlayerPedId(), PhoneData.AnimationData.lib, PhoneData.AnimationData.anim, 2.5)
-        deletePhone()
+        StopAnimTask(cache.ped, PhoneData.AnimationData.lib, PhoneData.AnimationData.anim, 2.5)
+        exports['qb-phone']:deletePhone()
     end
     PhoneData.AnimationData.lib = nil
     PhoneData.AnimationData.anim = nil
@@ -298,21 +312,27 @@ local function CancelCall()
 
     TriggerEvent('qb-phone:client:CustomNotification',
         "PHONE CALL",
-        "Disconnected...",
+        "Disconnected!",
         "fas fa-phone-square",
         "#e84118",
         5000
     )
 end
 
+local function isPlayerDeadDyingCuffed()
+    return QBX.PlayerData.metadata.isdead or QBX.PlayerData.metadata.inlaststand or QBX.PlayerData.metadata.ishandcuffed
+end
+
 local function CallCheck()
     if PhoneData.CallData.CallType == "ongoing" then
-        if not hasPhone() or PlayerData.metadata['isdead'] or PlayerData.metadata['inlaststand'] or PlayerData.metadata['ishandcuffed'] then
+        if not hasPhone() or isPlayerDeadDyingCuffed() then
             CancelCall()
         end
     end
 end
 
+---@param CallData table | nil
+---@param AnonymousCall boolean
 local function CallContact(CallData, AnonymousCall)
     local RepeatCount = 0
     PhoneData.CallData.CallType = "outgoing"
@@ -343,6 +363,7 @@ local function CallContact(CallData, AnonymousCall)
         end
     end
 end
+createPhoneExport('CallContact', CallContact)
 
 local function AnswerCall()
     if (PhoneData.CallData.CallType == "incoming" or PhoneData.CallData.CallType == "outgoing") and PhoneData.CallData.InCall and not PhoneData.CallData.AnsweredCall then
@@ -356,9 +377,9 @@ local function AnswerCall()
         TriggerServerEvent('qb-phone:server:SetCallState', true)
 
         if PhoneData.isOpen then
-            DoPhoneAnimation('cellphone_text_to_call')
+            exports['qb-phone']:DoPhoneAnimation('cellphone_text_to_call')
         else
-            DoPhoneAnimation('cellphone_call_listen_base')
+            exports['qb-phone']:DoPhoneAnimation('cellphone_call_listen_base')
         end
 
         CreateThread(function()
@@ -392,41 +413,62 @@ local function AnswerCall()
     end
 end
 
+---@param activate boolean
 local function CellFrontCamActivate(activate)
-	return Citizen.InvokeNative(0x2491A93618B7D838, activate)
+    return Citizen.InvokeNative(0x2491A93618B7D838, activate)
+end
+
+---@param player number
+---@param distance number
+---@param maxDistance? number
+---@return boolean
+function isPlayerTooFar(player, distance, maxDistance)
+    if not player or distance >= (maxDistance or 2.5) then
+        return true
+    end
+    return false
 end
 
 -- Command
 
-RegisterCommand('phone', function()
+local function OpenPhoneCommand()
     if not PhoneData.isOpen then
-        if not PlayerData.metadata['ishandcuffed'] and not PlayerData.metadata['inlaststand'] and not PlayerData.metadata['isdead'] and not IsPauseMenuActive() then
+        if not isPlayerDeadDyingCuffed() and not IsPauseMenuActive() then
             OpenPhone()
         else
-            QBCore.Functions.Notify("Action not available at the moment..", "error")
+            exports.qbx_core:Notify("Action not available at the moment..", "error")
         end
     end
-end) RegisterKeyMapping('phone', 'Open Phone', 'keyboard', 'M')
+end
 
-RegisterCommand("+answer", function()
-    if (PhoneData.CallData.CallType == "incoming" or PhoneData.CallData.CallType == "outgoing" and not PhoneData.CallData.CallType == "ongoing") then
-        if not PlayerData.metadata['ishandcuffed'] and not PlayerData.metadata['inlaststand'] and not PlayerData.metadata['isdead'] and not IsPauseMenuActive() and hasPhone() then
+RegisterCommand('phone', OpenPhoneCommand, false)
+RegisterKeyMapping('phone', 'Open Phone', 'keyboard', 'M')
+
+local function AnswerCallCommand()
+    if (PhoneData.CallData.CallType == "incoming" or PhoneData.CallData.CallType == "outgoing") and PhoneData.CallData.CallType ~= "ongoing" then
+        if not isPlayerDeadDyingCuffed() and not IsPauseMenuActive() and hasPhone() then
             AnswerCall()
         else
-            QBCore.Functions.Notify("Action not available at the moment..", "error")
+            exports.qbx_core:Notify("Action not available at the moment..", "error")
         end
     end
-end) RegisterKeyMapping('+answer', 'Answer Phone Call', 'keyboard', 'Y')
+end
 
-RegisterCommand("+decline", function()
+RegisterCommand("+answer", AnswerCallCommand, false)
+RegisterKeyMapping('+answer', 'Answer Phone Call', 'keyboard', 'Y')
+
+local function DeclineCallCommand()
     if (PhoneData.CallData.CallType == "incoming" or PhoneData.CallData.CallType == "outgoing" or PhoneData.CallData.CallType == "ongoing") then
-        if not PlayerData.metadata['ishandcuffed'] and not PlayerData.metadata['inlaststand'] and not PlayerData.metadata['isdead'] and not IsPauseMenuActive() then
+        if not isPlayerDeadDyingCuffed() and not IsPauseMenuActive() then
             CancelCall()
         else
-            QBCore.Functions.Notify("Action not available at the moment..", "error")
+            exports.qbx_core:Notify("Action not available at the moment..", "error")
         end
     end
-end) RegisterKeyMapping('+decline', 'Decline Phone Call', 'keyboard', 'J')
+end
+
+RegisterCommand("+decline", DeclineCallCommand, false)
+RegisterKeyMapping('+decline', 'Decline Phone Call', 'keyboard', 'J')
 
 -- NUI Callbacks
 
@@ -480,17 +522,17 @@ end)
 
 RegisterNUICallback('Close', function()
     if not PhoneData.CallData.InCall then
-        DoPhoneAnimation('cellphone_text_out')
+        exports['qb-phone']:DoPhoneAnimation('cellphone_text_out')
         SetTimeout(400, function()
-            StopAnimTask(PlayerPedId(), PhoneData.AnimationData.lib, PhoneData.AnimationData.anim, 2.5)
-            deletePhone()
+            StopAnimTask(cache.ped, PhoneData.AnimationData.lib, PhoneData.AnimationData.anim, 2.5)
+            exports['qb-phone']:deletePhone()
             PhoneData.AnimationData.lib = nil
             PhoneData.AnimationData.anim = nil
         end)
     else
         PhoneData.AnimationData.lib = nil
         PhoneData.AnimationData.anim = nil
-        DoPhoneAnimation('cellphone_text_to_call')
+        exports['qb-phone']:DoPhoneAnimation('cellphone_text_to_call')
     end
     SetTimeout(300, function()
         SetNuiFocus(false, false)
@@ -540,9 +582,8 @@ RegisterNUICallback('UpdateProfilePicture', function(data, cb)
 end)
 
 RegisterNUICallback('FetchSearchResults', function(data, cb)
-    QBCore.Functions.TriggerCallback('qb-phone:server:FetchResult', function(result)
-        cb(result)
-    end, data.input)
+    local result = lib.callback.await('qb-phone:server:FetchResult', false, data.input)
+    cb(result)
 end)
 
 RegisterNUICallback('DeleteContact', function(data, cb)
@@ -585,17 +626,16 @@ RegisterNUICallback('ClearGeneralAlerts', function(data, cb)
 end)
 
 RegisterNUICallback('CallContact', function(data, cb)
-    QBCore.Functions.TriggerCallback('qb-phone:server:GetCallState', function(CanCall, IsOnline)
-        local status = {
-            CanCall = CanCall,
-            IsOnline = IsOnline,
-            InCall = PhoneData.CallData.InCall,
-        }
-        cb(status)
-        if CanCall and not status.InCall then
-            CallContact(data.ContactData, data.Anonymous)
-        end
-    end, data.ContactData)
+    local CanCall, IsOnline = lib.callback.await('qb-phone:server:GetCallState', false, data.ContactData)
+    local status = {
+        CanCall = CanCall,
+        IsOnline = IsOnline,
+        InCall = PhoneData.CallData.InCall,
+    }
+    cb(status)
+    if CanCall and not status.InCall then
+        CallContact(data.ContactData, data.Anonymous)
+    end
 end)
 
 RegisterNUICallback("TakePhoto", function(_, cb)
@@ -613,19 +653,19 @@ RegisterNUICallback("TakePhoto", function(_, cb)
             OpenPhone()
             break
         elseif IsControlJustPressed(1, 176) then
-            QBCore.Functions.TriggerCallback("qb-phone:server:GetWebhook",function(hook)
-                QBCore.Functions.Notify('Touching up photo...', 'primary')
-                exports['screenshot-basic']:requestScreenshotUpload(tostring(hook), "files[]", function(uploadData)
-                    local image = json.decode(uploadData)
-                    DestroyMobilePhone()
-                    CellCamActivate(false, false)
-                    TriggerServerEvent('qb-phone:server:addImageToGallery', image.attachments[1].proxy_url)
-                    Wait(400)
-                    TriggerServerEvent('qb-phone:server:getImageFromGallery')
-                    cb(json.encode(image.attachments[1].proxy_url))
-                    QBCore.Functions.Notify('Photo saved!', "success")
-                    OpenPhone()
-                end)
+            local hook = lib.callback.await('qb-phone:server:GetWebhook', false)
+            if not hook then print('you are missing the webhook in the config, images will not save. report to a developer asap') return end
+            exports.qbx_core:Notify('Touching up photo...', 'primary')
+            exports['screenshot-basic']:requestScreenshotUpload(tostring(hook), "files[]", function(uploadData)
+                local image = json.decode(uploadData)
+                DestroyMobilePhone()
+                CellCamActivate(false, false)
+                TriggerServerEvent('qb-phone:server:addImageToGallery', image.attachments[1].proxy_url)
+                Wait(400)
+                TriggerServerEvent('qb-phone:server:getImageFromGallery')
+                cb(json.encode(image.attachments[1].proxy_url))
+                exports.qbx_core:Notify('Photo saved!', "success")
+                OpenPhone()
             end)
             break
         end
@@ -670,9 +710,10 @@ RegisterNetEvent('qb-phone:client:CancelCall', function()
     PhoneData.CallData.TargetData = {}
 
     if not PhoneData.isOpen then
-        StopAnimTask(PlayerPedId(), PhoneData.AnimationData.lib, PhoneData.AnimationData.anim, 2.5)
-        deletePhone()
+        StopAnimTask(cache.ped, PhoneData.AnimationData.lib, PhoneData.AnimationData.anim, 2.5)
+        exports['qb-phone']:deletePhone()
     end
+
     PhoneData.AnimationData.lib = nil
     PhoneData.AnimationData.anim = nil
 
@@ -689,7 +730,7 @@ RegisterNetEvent('qb-phone:client:CancelCall', function()
 
     TriggerEvent('qb-phone:client:CustomNotification',
         "PHONE CALL",
-        "Disconnected...",
+        "Disconnected!",
         "fas fa-phone-square",
         "#e84118",
         5000
@@ -699,11 +740,11 @@ end)
 RegisterNUICallback('phone-silent-button', function(_, cb)
     if CallVolume == tonumber("0.2") then
         CallVolume = 0
-        QBCore.Functions.Notify("Silent Mode On", "success")
+        exports.qbx_core:Notify("Silent Mode On", "success")
         cb(true)
     else
         CallVolume = 0.2
-        QBCore.Functions.Notify("Silent Mode Off", "error")
+        exports.qbx_core:Notify("Silent Mode Off", "error")
         cb(false)
     end
 end)
@@ -738,7 +779,7 @@ RegisterNetEvent('qb-phone:client:GetCalled', function(CallerNumber, CallId, Ano
                 if RepeatCount + 1 ~= Config.CallRepeats + 1 then
                     if PhoneData.CallData.InCall then
                         RepeatCount = RepeatCount + 1
-                        TriggerServerEvent("InteractSound_SV:PlayOnSource", "ringing", CallVolume)
+                        TriggerServerEvent("InteractSound_SV:PlayWithinDistance", 2.5, "ringing", CallVolume)
 
                         if not PhoneData.isOpen then
                             SendNUIMessage({
@@ -797,9 +838,9 @@ RegisterNetEvent('qb-phone:client:AnswerCall', function()
         TriggerServerEvent('qb-phone:server:SetCallState', true)
 
         if PhoneData.isOpen then
-            DoPhoneAnimation('cellphone_text_to_call')
+            exports['qb-phone']:DoPhoneAnimation('cellphone_text_to_call')
         else
-            DoPhoneAnimation('cellphone_call_listen_base')
+            exports['qb-phone']:DoPhoneAnimation('cellphone_call_listen_base')
         end
 
         CreateThread(function()
@@ -833,49 +874,21 @@ end)
 -- Handler Events
 
 RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
-    PlayerData = QBCore.Functions.GetPlayerData()
     FullyLoaded = true
     Wait(250)
     LoadPhone()
 end)
 
-RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
-    FullyLoaded = false
-    PlayerData = {}
-    PhoneData = {
-        Documents = {},
-        MetaData = {},
-        isOpen = false,
-        PlayerData = nil,
-        Contacts = {},
-        Tweets = {},
-        Hashtags = {},
-        Chats = {},
-        CallData = {},
-        RecentCalls = {},
-        Garage = {},
-        Mails = {},
-        Adverts = {},
-        GarageVehicles = {},
-        AnimationData = {
-            lib = nil,
-            anim = nil,
-        },
-    }
-end)
-
-RegisterNetEvent("QBCore:Player:SetPlayerData", function(val)
-    PlayerData = val
-    Wait(250)
+RegisterNetEvent("QBCore:Player:SetPlayerData", function(_)
     CallCheck()
 end)
 
 RegisterNetEvent('QBCore:Client:OnJobUpdate', function(JobInfo)
-    PlayerData.job = JobInfo
+    QBX.PlayerData.job = JobInfo
     SendNUIMessage({
         action = "UpdateApplications",
-        JobData = JobInfo,
-        applications = Config.PhoneApplications
+        applications = Config.PhoneApplications,
+        PlayerJob = JobInfo
     })
 end)
 
@@ -886,22 +899,33 @@ end)
 
 AddEventHandler('onResourceStart', function(resource)
     if resource == GetCurrentResourceName() then
-        PlayerData = QBCore.Functions.GetPlayerData()
-        Wait(500)
         LoadPhone()
     end
 end)
 
 -- Public Phone Shit
 
-RegisterNetEvent('qb-phone:client:publocphoneopen',function()
-    SetNuiFocus(true, true)
-    SendNUIMessage({type = 'publicphoneopen'})
-end)
+RegisterNetEvent('qb-phone:client:publicphoneopen',function()
+    local input = lib.inputDialog("", { { type = 'number', label = 'Phone Number', icon = 'fas fa-phone-volume' } }, { allowCancel = false })
+    if not input or not next(input) then return end
 
-RegisterNUICallback('publicphoneclose', function(_, cb)
-    SetNuiFocus(false, false)
-    cb('ok')
+    local calldata = { number = input[1], name = input[1] }
+
+    print(json.encode(calldata))
+
+    local CanCall, IsOnline = lib.callback.await('qb-phone:server:GetCallState', false, calldata)
+
+    local status = {
+        CanCall = CanCall,
+        IsOnline = IsOnline,
+        InCall = PhoneData.CallData.InCall,
+    }
+
+    if not IsOnline then return exports.qbx_core:Notify('This person is not around!', 'error') end
+
+    if CanCall and not status.InCall then
+        CallContact(calldata, true)
+    end
 end)
 
 --- SHIT THAT IS GONE
@@ -909,15 +933,14 @@ end)
 RegisterNUICallback('CanTransferMoney', function(data, cb)
     local amount = tonumber(data.amountOf)
     local iban = data.sendTo
-    if (PlayerData.money.bank - amount) >= 0 then
-        QBCore.Functions.TriggerCallback('qb-phone:server:CanTransferMoney', function(Transferd)
-            if Transferd then
-                cb({TransferedMoney = true, NewBalance = (PlayerData.money.bank - amount)})
-            else
-		SendNUIMessage({ action = "PhoneNotification", PhoneNotify = { timeout=3000, title = "Bank", text = "Account does not exist!", icon = "fas fa-university", color = "#ff0000", }, })
-                cb({TransferedMoney = false})
-            end
-        end, amount, iban)
+    if (QBX.PlayerData.money.bank - amount) >= 0 then
+        local Transfered = lib.callback.await('qb-phone:server:CanTransferMoney', false, amount, iban)
+        if Transfered then
+            cb({TransferedMoney = true, NewBalance = (QBX.PlayerData.money.bank - amount)})
+        else
+            SendNUIMessage({ action = "PhoneNotification", PhoneNotify = { timeout=3000, title = "Bank", text = "Account does not exist!", icon = "fas fa-university", color = "#ff0000", }, })
+            cb({TransferedMoney = false})
+        end
     else
         cb({TransferedMoney = false})
     end
@@ -957,15 +980,13 @@ RegisterNetEvent('qb-phone:client:RemoveBankMoney', function(amount)
     end
 end)
 
-RegisterNetEvent('qb-phone:client:GiveContactDetails', function()
-    local player, distance = QBCore.Functions.GetClosestPlayer()
-    if player ~= -1 and distance < 2.5 then
-        local PlayerId = GetPlayerServerId(player)
-        TriggerServerEvent('qb-phone:server:GiveContactDetails', PlayerId)
-    else
-        QBCore.Functions.Notify("No one nearby!", "error")
-    end
-end)
+local function GiveContactDetails()
+    local pID = lib.getClosestPlayer(GetEntityCoords(cache.ped), 2.5)
+    if not pID then return exports.qbx_core:Notify("No one nearby!", "error") end
+
+    local PlayerId = GetPlayerServerId(pID)
+    TriggerServerEvent('qb-phone:server:GiveContactDetails', PlayerId)
+end createPhoneExport('GiveContactDetails', GiveContactDetails)
 
 RegisterNetEvent("qb-phone:client:giveContactRequest", function(contactInfo)
     local success = exports['qb-phone']:PhoneNotification("CONTACT REQUEST", contactInfo.name..' contact request', 'fas fa-phone', '#b3e0f2', "NONE", 'fas fa-check-circle', 'fas fa-times-circle')
@@ -994,4 +1015,31 @@ RegisterNetEvent('qb-phone:RefreshPhone', function()
             AppData = Config.PhoneApplications,
         })
     end)
+end)
+
+
+local function getVehicleFromVehList(hash)
+    for _, v in pairs(QBCore.Shared.Vehicles) do
+		if hash == joaat(v.hash) then
+			return v.name, v.brand
+		end
+	end
+    print('^1It seems like you have not added your vehicle ('..GetDisplayNameFromVehicleModel(hash)..') to the vehicles.lua')
+    return 'model not found', 'brand not found'
+end
+
+RegisterNUICallback('UpdateVehicle', function(data, cb)
+    local info, class, perfRating = exports['cw-performance']:getVehicleInfo(GetPlayersLastVehicle())
+    local model, brand = getVehicleFromVehList(GetEntityModel(GetPlayersLastVehicle()))
+    local data = {
+        brand = brand,
+        rating = class..''..perfRating,
+        accel = math.floor(info.accel*10)/10,
+        speed =  math.floor(info.speed*10)/10,
+        handling =  math.floor(info.handling*10)/10,
+        braking =  math.floor(info.braking*10)/10,
+        drivetrain = info.drivetrain,
+        model = model
+    }
+    cb(data)
 end)
